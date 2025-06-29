@@ -58,7 +58,10 @@
                   </div>
                 </div>
                 <!-- AI回复内容 -->
-                <div class="message-text">{{ message.content }}</div>
+                <div class="message-text" :class="{ 'interrupted-text': message.interrupted }">
+                  {{ message.content }}
+                  <span v-if="message.interrupted" class="interrupted-label">（已中断）</span>
+                </div>
                 <div class="message-time">{{ formatTime(message.timestamp) }}</div>
               </div>
             </div>
@@ -92,22 +95,19 @@
             <div class="message ai-message">
               <div class="message-avatar ai-avatar">🤖</div>
               <div class="message-content status-content">
-                <div class="status-text">
-                  <span class="status-icon">🔄</span>
-                  AI正在响应中...
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          <!-- AI思考状态显示 -->
-          <div v-if="currentResponse.thinking && !currentResponse.content" class="ai-status">
-            <div class="message ai-message">
-              <div class="message-avatar ai-avatar">🤖</div>
-              <div class="message-content status-content">
-                <div class="status-text">
-                  <span class="status-icon">🧠</span>
-                  我正在思考中...
+                <div class="status-header">
+                  <div class="status-text">
+                    <span class="status-icon">🔄</span>
+                    AI正在响应中...
+                  </div>
+                  <el-button 
+                    text 
+                    size="small" 
+                    @click="stopAIResponse"
+                    class="status-stop-btn"
+                  >
+                    停止
+                  </el-button>
                 </div>
               </div>
             </div>
@@ -130,16 +130,30 @@
               <div class="input-tips">
                 <span>💡 提示：按 Ctrl + Enter 快速发送</span>
               </div>
-              <el-button 
-                type="primary" 
-                @click="sendMessage"
-                :loading="loading"
-                :disabled="!userMessage.trim()"
-                size="large"
-                class="send-button"
-              >
-                {{ loading ? '发送中...' : '发送消息' }}
-              </el-button>
+              <div class="button-group">
+                <!-- 停止按钮 -->
+                <el-button 
+                  v-if="loading"
+                  type="danger" 
+                  @click="stopAIResponse"
+                  size="large"
+                  class="stop-button"
+                >
+                  <span class="stop-icon">⏹</span>
+                  停止回复
+                </el-button>
+                <!-- 发送按钮 -->
+                <el-button 
+                  v-else
+                  type="primary" 
+                  @click="sendMessage"
+                  :disabled="!userMessage.trim()"
+                  size="large"
+                  class="send-button"
+                >
+                  发送消息
+                </el-button>
+              </div>
             </div>
           </div>
         </div>
@@ -163,6 +177,10 @@ const userMessage = ref('') // 用户输入的消息
 const loading = ref(false) // 加载状态
 const chatHistory = ref([]) // 聊天历史记录
 const chatHistoryRef = ref(null) // 聊天历史容器引用
+
+// 中断控制器
+let abortController = null
+let isStoppedByUser = false // 用户是否主动停止
 
 // 当前AI回复状态（用于实时显示）
 const currentResponse = reactive({
@@ -192,8 +210,52 @@ const handleLogout = () => {
   router.push('/login')
 }
 
+// 中断AI回复功能
+const stopAIResponse = () => {
+  console.log('用户点击停止按钮')
+  
+  // 设置用户停止标志
+  isStoppedByUser = true
+  
+  // 立即停止加载状态
+  loading.value = false
+  
+  // 中断网络请求
+  if (abortController) {
+    console.log('中断网络请求')
+    abortController.abort() // 中断网络请求
+    abortController = null
+  }
+  
+  // 如果有正在进行的回复，保存到历史记录
+  if (currentResponse.thinking || currentResponse.content) {
+    console.log('保存被中断的回复到历史记录')
+    chatHistory.value.push({
+      role: 'assistant',
+      content: currentResponse.content || '回复被用户中断',
+      thinking: currentResponse.thinking,
+      timestamp: Date.now(),
+      showThinking: false,
+      interrupted: true // 标记为被中断的消息
+    })
+  }
+  
+  // 立即清空当前回复状态
+  currentResponse.thinking = ''
+  currentResponse.content = ''
+  
+  ElMessage.info('已停止AI回复')
+  scrollToBottom()
+}
+
 // 发送消息主函数
 const sendMessage = async () => {
+  // 如果正在加载中，先停止当前请求
+  if (loading.value) {
+    stopAIResponse()
+    return
+  }
+  
   // 验证输入
   if (!userMessage.value.trim()) {
     ElMessage.warning('请输入消息内容')
@@ -214,6 +276,10 @@ const sendMessage = async () => {
   
   // 设置加载状态
   loading.value = true
+  isStoppedByUser = false // 重置停止标志
+  
+  // 创建新的中断控制器
+  abortController = new AbortController()
   
   // 清空当前回复状态
   currentResponse.thinking = ''
@@ -235,22 +301,32 @@ const sendMessage = async () => {
       "stream": true // 启用流式响应
     }
     
-    // 发送请求到AI API
-    const response = await axios.request({
-      url: 'https://api.siliconflow.cn/v1/chat/completions',
-      method: 'post',
+    // 使用fetch进行流式请求，而不是axios
+    const response = await fetch('https://api.siliconflow.cn/v1/chat/completions', {
+      method: 'POST',
       headers: { 
         'Content-Type': 'application/json', 
-        'Accept': 'application/json', 
+        'Accept': 'text/event-stream',
         'Authorization': 'Bearer sk-dhyofqmlqevepadtfbjjmtvelluvgoqixawhgqcyhmiysdtl'
       },
-      data: JSON.stringify(requestData)
+      body: JSON.stringify(requestData),
+      signal: abortController.signal // 添加中断信号
     })
     
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+    
     // 处理流式响应
-    await processStreamResponse(response.data)
+    await processStreamResponse(response)
     
   } catch (error) {
+    // 检查是否是用户主动中断
+    if (error.name === 'AbortError' || error.code === 'ERR_CANCELED' || isStoppedByUser) {
+      console.log('请求被用户中断')
+      return // 中断情况下不显示错误消息
+    }
+    
     console.error('发送消息错误:', error)
     ElMessage.error('发送失败，请稍后重试')
     
@@ -264,76 +340,132 @@ const sendMessage = async () => {
     })
   } finally {
     loading.value = false
+    abortController = null // 清空控制器
+    isStoppedByUser = false // 重置停止标志
     scrollToBottom()
   }
 }
 
 // 处理流式响应数据
-const processStreamResponse = async (responseData) => {
-  // 按双换行符分割响应数据
-  const dataChunks = responseData.split('\n\n')
+const processStreamResponse = async (response) => {
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
   
   let accumulatedThinking = '' // 累积的思考内容
   let accumulatedContent = ''  // 累积的回复内容
+  let buffer = '' // 用于处理分片数据
   
-  // 逐个处理数据块
-  for (let i = 0; i < dataChunks.length; i++) {
-    const chunk = dataChunks[i]
-    
-    // 跳过空白行
-    if (chunk === '') {
-      continue
+  try {
+    while (true) {
+      // 检查是否被用户停止
+      if (isStoppedByUser || abortController?.signal.aborted) {
+        console.log('流式处理被用户中断')
+        reader.cancel() // 取消流读取
+        return
+      }
+      
+      const { done, value } = await reader.read()
+      
+      if (done) {
+        break
+      }
+      
+      // 解码数据并添加到缓冲区
+      buffer += decoder.decode(value, { stream: true })
+      
+      // 按行分割数据
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || '' // 保留最后一行未完成的数据
+      
+      for (const line of lines) {
+        // 检查是否被用户停止
+        if (isStoppedByUser || abortController?.signal.aborted) {
+          console.log('流式处理被用户中断（处理行时）')
+          reader.cancel()
+          return
+        }
+        
+        const trimmedLine = line.trim()
+        
+        // 跳过空行和非数据行
+        if (!trimmedLine || !trimmedLine.startsWith('data: ')) {
+          continue
+        }
+        
+        // 移除 "data: " 前缀
+        const jsonStr = trimmedLine.substring(6)
+        
+        // 检查是否结束
+        if (jsonStr === '[DONE]') {
+          console.log('流式响应结束')
+          break
+        }
+        
+        try {
+          // 解析JSON数据
+          const jsonData = JSON.parse(jsonStr)
+          
+          // 检查数据结构
+          if (jsonData.choices && jsonData.choices[0] && jsonData.choices[0].delta) {
+            const delta = jsonData.choices[0].delta
+            
+            // 处理思考内容
+            if (delta.reasoning_content) {
+              accumulatedThinking += delta.reasoning_content
+              currentResponse.thinking = accumulatedThinking
+            }
+            
+            // 处理回复内容
+            if (delta.content) {
+              accumulatedContent += delta.content
+              currentResponse.content = accumulatedContent
+            }
+            
+            // 实时滚动到底部
+            scrollToBottom()
+            
+            // 添加小延迟以创建打字效果
+            await new Promise(resolve => setTimeout(resolve, 30))
+          }
+          
+        } catch (parseError) {
+          console.warn('解析JSON失败:', parseError, '原始数据:', jsonStr)
+        }
+      }
     }
     
-    // 移除 "data: " 前缀
-    const jsonStr = chunk.substring(6)
-    
-    // 检查是否结束
-    if (jsonStr === '[DONE]') {
-      break
+    // 将完整的AI回复添加到聊天历史（仅在未被中断时）
+    if (!isStoppedByUser && (accumulatedContent || accumulatedThinking)) {
+      console.log('保存完整的AI回复到历史记录')
+      chatHistory.value.push({
+        role: 'assistant',
+        content: accumulatedContent || '我正在思考中...',
+        thinking: accumulatedThinking,
+        timestamp: Date.now(),
+        showThinking: false // 默认收起思考过程
+      })
+    } else if (isStoppedByUser) {
+      console.log('因为用户中断，不保存到历史记录（已在stopAIResponse中处理）')
     }
     
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      console.log('流读取被中断')
+      return
+    }
+    throw error
+  } finally {
+    // 清空当前回复状态
+    currentResponse.thinking = ''
+    currentResponse.content = ''
+    
+    // 确保读取器关闭
     try {
-      // 解析JSON数据
-      const jsonData = JSON.parse(jsonStr)
-      
-      // 模拟延迟以创建打字效果
-      await new Promise(resolve => setTimeout(resolve, 50))
-      
-      // 处理思考内容
-      if (jsonData.choices[0].delta.reasoning_content) {
-        accumulatedThinking += jsonData.choices[0].delta.reasoning_content
-        currentResponse.thinking = accumulatedThinking
-      }
-      
-      // 处理回复内容
-      if (jsonData.choices[0].delta.content) {
-        accumulatedContent += jsonData.choices[0].delta.content
-        currentResponse.content = accumulatedContent
-      }
-      
-      // 实时滚动到底部
-      scrollToBottom()
-      
-    } catch (parseError) {
-      console.warn('解析JSON失败:', parseError, '原始数据:', jsonStr)
+      reader.cancel()
+    } catch (e) {
+      // 忽略取消错误
     }
   }
-  
-  // 将完整的AI回复添加到聊天历史
-  if (accumulatedContent || accumulatedThinking) {
-    chatHistory.value.push({
-      role: 'assistant',
-      content: accumulatedContent || '我正在思考中...',
-      thinking: accumulatedThinking,
-      timestamp: Date.now(),
-      showThinking: false // 默认收起思考过程
-    })
-  }
-  
-  // 清空当前回复状态
-  currentResponse.thinking = ''
-  currentResponse.content = ''
 }
 
 // 组件挂载时的初始化
@@ -611,6 +743,20 @@ onMounted(() => {
   51%, 100% { opacity: 0; }
 }
 
+/* 中断消息样式 */
+.interrupted-text {
+  opacity: 0.8;
+  border-left: 3px solid #ff6b6b;
+  padding-left: 10px;
+}
+
+.interrupted-label {
+  color: #ff6b6b;
+  font-size: 12px;
+  font-weight: 500;
+  margin-left: 8px;
+}
+
 /* AI状态显示样式 */
 .ai-status {
   margin-bottom: 25px;
@@ -620,6 +766,12 @@ onMounted(() => {
   background: rgba(102, 126, 234, 0.1) !important;
   border: 2px solid rgba(102, 126, 234, 0.2);
   animation: pulse-gentle 2s ease-in-out infinite;
+}
+
+.status-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .status-text {
@@ -634,6 +786,19 @@ onMounted(() => {
 .status-icon {
   font-size: 16px;
   animation: rotate 2s linear infinite;
+}
+
+.status-stop-btn {
+  color: #ff6b6b !important;
+  font-size: 12px;
+  padding: 4px 8px;
+  height: auto;
+  min-height: auto;
+}
+
+.status-stop-btn:hover {
+  color: #ff5252 !important;
+  background: rgba(255, 107, 107, 0.1) !important;
 }
 
 @keyframes pulse-gentle {
@@ -716,6 +881,40 @@ onMounted(() => {
   box-shadow: none;
 }
 
+/* 按钮组样式 */
+.button-group {
+  display: flex;
+  gap: 10px;
+}
+
+/* 停止按钮样式 */
+.stop-button {
+  background: linear-gradient(135deg, #ff6b6b, #ee5a52);
+  border: none;
+  border-radius: 12px;
+  padding: 12px 30px;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  color: white;
+}
+
+.stop-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px rgba(255, 107, 107, 0.3);
+  background: linear-gradient(135deg, #ff5252, #e53935);
+}
+
+.stop-icon {
+  font-size: 16px;
+  margin-right: 5px;
+  animation: pulse-stop 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-stop {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
 /* 响应式设计 */
 @media (max-width: 768px) {
   .header-content {
@@ -753,7 +952,13 @@ onMounted(() => {
     align-items: stretch;
   }
   
-  .send-button {
+  .button-group {
+    flex-direction: column;
+    width: 100%;
+  }
+  
+  .send-button,
+  .stop-button {
     width: 100%;
   }
 }

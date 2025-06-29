@@ -36,22 +36,23 @@ bigmodel/
 │   │   ├── login.vue      # 登录/注册页面
 │   │   └── index.vue      # 主聊天页面
 │   ├── stores/            # 状态管理
-│   │   ├── user.js        # 用户状态
-│   │   └── counter.js     # 计数器示例
+│   │   └── user.js        # 用户状态
 │   ├── utils/             # 工具函数
 │   │   └── api.js         # API请求封装
 │   ├── router/            # 路由配置
 │   │   └── index.js       # 路由定义
-│   ├── components/        # 组件
 │   ├── assets/           # 静态资源
+│   │   └── base.css      # 基础样式
 │   ├── App.vue           # 根组件
 │   └── main.js           # 入口文件
 ├── server/                # 后端源码
-│   ├── app.js            # 服务器主文件
-│   └── package.json      # 后端依赖
+│   ├── app.js            # 服务器主文件（CommonJS）
+│   └── package.json      # 服务器模块配置
 ├── public/               # 公共静态文件
-├── package.json          # 前端依赖
+│   └── favicon.ico       # 网站图标
+├── package.json          # 统一依赖管理
 ├── vite.config.js        # Vite配置
+├── start.bat             # 一键启动脚本
 └── README.md            # 项目说明
 ```
 
@@ -68,16 +69,18 @@ git clone <项目地址>
 cd bigmodel
 ```
 
-### 3. 安装前端依赖
+### 3. 安装依赖（统一管理）
 ```bash
 npm install
 ```
 
-### 4. 安装后端依赖
+### 4. 一键启动（推荐）
 ```bash
-cd server
-npm install
-cd ..
+# Windows用户
+start.bat
+
+# 或手动启动
+npm start
 ```
 
 ### 5. 配置数据库

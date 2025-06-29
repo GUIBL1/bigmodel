@@ -1,25 +1,48 @@
 # 🚀 快速启动指南
 
-## ⚠️ 重要提醒
-由于权限限制，请按以下步骤手动启动项目：
+## 📋 启动方式
 
-## 📋 启动步骤
+项目提供两种依赖管理方式：
 
-### 1. 安装依赖
-打开命令提示符（以管理员身份运行），执行：
+### 🎯 方式一：统一依赖管理（推荐）
+前后端共享同一个node_modules，节省空间和管理成本。
 
 ```bash
-# 安装前端依赖
+# 1. 安装统一依赖
 cd e:\shixi\bigmodel
 npm install
 
-# 安装后端依赖
+# 2. 启动前后端服务
+npm run start:unified
+```
+
+### 🔧 方式二：分离依赖管理
+前后端各自管理依赖，更传统的方式。
+
+```bash
+# 1. 安装前端依赖
+cd e:\shixi\bigmodel
+npm install
+
+# 2. 安装后端依赖
 cd server
 npm install
 cd ..
+
+# 3. 分别启动服务
+# 终端1：启动后端
+cd server
+npm start
+
+# 终端2：启动前端
+cd ..
+npm run dev
 ```
 
-### 2. 配置数据库
+### 🚀 一键启动脚本
+双击 `start.bat` 文件，根据提示选择启动方式。
+
+## ⚙️ 配置数据库
 1. 确保MySQL服务已启动
 2. 修改 `server/app.js` 中的数据库配置：
 ```javascript

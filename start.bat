@@ -23,7 +23,38 @@ if %errorlevel% neq 0 (
 )
 
 echo.
-echo [1] 安装前端依赖...
+echo 请选择启动方式：
+echo [1] 统一依赖管理（推荐）- 前后端共享node_modules
+echo [2] 分离依赖管理 - 前后端独立依赖
+echo.
+set /p choice=请输入选择 (1/2): 
+
+if "%choice%"=="1" goto unified
+if "%choice%"=="2" goto separated
+echo 无效选择，使用默认统一管理方式
+goto unified
+
+:unified
+echo.
+echo [统一依赖模式] 安装项目依赖...
+call npm install
+if %errorlevel% neq 0 (
+    echo [错误] 依赖安装失败
+    pause
+    exit /b 1
+)
+
+echo.
+echo [统一依赖模式] 启动前端和后端服务...
+echo 前端服务: http://localhost:5173
+echo 后端服务: http://localhost:3001
+echo.
+npm run start:unified
+goto end
+
+:separated
+echo.
+echo [分离依赖模式] 安装前端依赖...
 call npm install
 if %errorlevel% neq 0 (
     echo [错误] 前端依赖安装失败
@@ -32,7 +63,7 @@ if %errorlevel% neq 0 (
 )
 
 echo.
-echo [2] 安装后端依赖...
+echo [分离依赖模式] 安装后端依赖...
 cd server
 call npm install
 if %errorlevel% neq 0 (
@@ -44,22 +75,19 @@ if %errorlevel% neq 0 (
 cd ..
 
 echo.
-echo [3] 启动后端服务...
+echo [分离依赖模式] 启动后端服务...
 start "AI助手-后端服务" cmd /k "cd server && npm start"
 timeout /t 3 /nobreak >nul
 
 echo.
-echo [4] 启动前端服务...
-echo 前端服务将在 http://localhost:5173 启动
-echo 后端服务运行在 http://localhost:3001
+echo [分离依赖模式] 启动前端服务...
+echo 前端服务: http://localhost:5173
+echo 后端服务: http://localhost:3001
+echo.
+npm run dev
+
+:end
 echo.
 echo ========================================
 echo     项目启动完成！
 echo ========================================
-echo.
-echo 请确保：
-echo 1. MySQL服务已启动
-echo 2. 已修改 server/app.js 中的数据库配置
-echo 3. 浏览器将自动打开登录页面
-echo.
-npm run dev
