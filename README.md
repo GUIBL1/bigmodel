@@ -1,4 +1,4 @@
-# AI智能助手项目
+# 🤖 AI智能助手项目
 
 一个基于Vue 3 + Node.js + MySQL的智能聊天应用，支持用户注册登录和AI对话功能。
 
@@ -9,6 +9,8 @@
 - 🎨 **精美界面**: 现代化UI设计，响应式布局
 - 🔒 **数据安全**: 密码加密存储，安全的用户会话管理
 - 📱 **移动友好**: 支持移动端设备访问
+- ⚡ **中断控制**: 支持实时中断AI回复
+- 🎯 **统一依赖**: 前后端可共享node_modules
 
 ## 🛠️ 技术栈
 
@@ -31,32 +33,28 @@
 
 ```
 bigmodel/
-├── src/                    # 前端源码
-│   ├── views/             # 页面组件
-│   │   ├── login.vue      # 登录/注册页面
-│   │   └── index.vue      # 主聊天页面
-│   ├── stores/            # 状态管理
-│   │   └── user.js        # 用户状态
-│   ├── utils/             # 工具函数
-│   │   └── api.js         # API请求封装
-│   ├── router/            # 路由配置
-│   │   └── index.js       # 路由定义
-│   ├── assets/           # 静态资源
-│   │   └── base.css      # 基础样式
-│   ├── App.vue           # 根组件
-│   └── main.js           # 入口文件
-├── server/                # 后端源码
-│   ├── app.js            # 服务器主文件（CommonJS）
-│   └── package.json      # 服务器模块配置
-├── public/               # 公共静态文件
-│   └── favicon.ico       # 网站图标
-├── package.json          # 统一依赖管理
-├── vite.config.js        # Vite配置
-├── start.bat             # 一键启动脚本
-└── README.md            # 项目说明
+├── 📄 package.json          # 统一的项目依赖配置
+├── 📄 vite.config.js        # Vite构建配置
+├── 📄 index.html            # 入口HTML文件
+├── 📚 README.md             # 项目说明文档
+├── 📁 src/                  # 前端源代码
+│   ├── App.vue              # 根组件
+│   ├── main.js              # 入口文件
+│   ├── 📁 views/            # 页面组件
+│   │   ├── login.vue        # 登录/注册页面
+│   │   └── index.vue        # AI对话主界面
+│   ├── 📁 router/           # 路由配置
+│   │   └── index.js         # 路由定义
+│   ├── 📁 stores/           # 状态管理
+│   │   └── user.js          # 用户状态管理
+│   └──  📁 utils/            # 工具函数
+│        └── api.js           # API请求封装
+└── 📁 server/               # 后端源代码
+    ├── package.json         # 服务器模块配置（使用根目录依赖）
+    └── app.js               # Express服务器（CommonJS）
 ```
 
-## 🚀 快速开始
+## 🚀 快速启动指南
 
 ### 1. 环境要求
 - Node.js >= 16.0.0
@@ -65,79 +63,140 @@ bigmodel/
 
 ### 2. 克隆项目
 ```bash
-git clone <项目地址>
+git clone https://github.com/GUIBL1/bigmodel.git
 cd bigmodel
 ```
 
-### 3. 安装依赖（统一管理）
+### 3. 启动方式
+前后端共享同一个node_modules，节省空间和管理成本。
+
 ```bash
+# 1. 安装统一依赖
 npm install
+
+# 2. 启动前后端服务
+npm run start:unified
 ```
 
-### 4. 一键启动（推荐）
+## 🗄️ 数据库配置
+
+### MySQL 数据库安装与配置
+
+#### 1. 安装 MySQL
+请根据您的操作系统下载并安装 MySQL：
+- Windows: https://dev.mysql.com/downloads/mysql/
+- macOS: 可使用 Homebrew `brew install mysql`
+- Linux: `sudo apt-get install mysql-server` (Ubuntu/Debian)
+
+#### 2. 启动 MySQL 服务
 ```bash
-# Windows用户
-start.bat
+# Windows (以管理员身份运行命令提示符)
+net start mysql
 
-# 或手动启动
-npm start
+# macOS
+brew services start mysql
+
+# Linux
+sudo systemctl start mysql
 ```
 
-### 5. 配置数据库
-请参考 [DATABASE_SETUP.md](./DATABASE_SETUP.md) 文件进行数据库配置。
-
-### 6. 启动项目
-
-#### 启动后端服务（端口3001）
+#### 3. 登录 MySQL
 ```bash
-cd server
-npm start
-# 或使用开发模式
-npm run dev
+mysql -u root -p
 ```
 
-#### 启动前端服务（端口5173）
-```bash
-npm run dev
+#### 4. 创建数据库和用户（可选）
+```sql
+-- 创建专用数据库用户（推荐）
+CREATE USER 'aiuser'@'localhost' IDENTIFIED BY 'aipassword123';
+GRANT ALL PRIVILEGES ON ai.* TO 'aiuser'@'localhost';
+FLUSH PRIVILEGES;
+
+-- 或直接使用 root 用户（简单但不推荐生产环境）
 ```
 
-### 7. 访问应用
-打开浏览器访问: http://localhost:5173
+#### 5. 修改后端配置
+在 `server/app.js` 文件中修改数据库连接配置：
 
-## 🔧 配置说明
-
-### 数据库配置
-在 `server/app.js` 中修改数据库连接配置：
 ```javascript
 const dbConfig = {
   host: 'localhost',
-  user: 'root',
-  password: '你的MySQL密码',
+  user: 'root',          // 或您创建的用户名
+  password: '123456',    // 修改为您的MySQL密码
   database: 'ai'
 };
 ```
 
+#### 6. 自动创建数据库和表
+当您首次运行后端服务器时，会自动：
+- 创建 `ai` 数据库
+- 创建 `users` 用户表
+
+### 数据库表结构
+
+#### users 表
+```sql
+CREATE TABLE users (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  username VARCHAR(50) UNIQUE NOT NULL COMMENT '用户名，唯一',
+  password VARCHAR(255) NOT NULL COMMENT '加密后的密码',
+  email VARCHAR(100) COMMENT '邮箱地址',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
+) COMMENT '用户信息表';
+```
+
+## 🎯 使用流程
+
+1. **首次访问**：自动跳转到登录页面
+2. **注册账户**：点击"立即注册"创建新账户
+   - 用户名：至少8位字符
+   - 密码：至少6位字符
+   - 邮箱：可选，需要正确格式
+3. **登录系统**：使用注册的账户登录
+4. **开始聊天**：在主页面与AI助手对话
+   - 发送消息：输入问题并点击发送或按Ctrl+Enter
+   - 查看回复：观察AI的思考过程和最终回答
+   - 中断回复：点击"停止"按钮可随时中断AI回复
+   - 多轮对话：支持连续对话
+
+## � 功能说明
+
+### 🔐 用户认证系统
+- **注册功能**：创建新用户账户，密码自动加密存储
+- **登录功能**：验证用户身份，生成JWT token
+- **自动登录**：保存登录状态，刷新页面不丢失
+- **登出功能**：清除用户信息和token
+
+### 💬 AI对话系统
+- **实时对话**：支持与AI进行自然语言对话
+- **流式输出**：实时显示AI的回复过程
+- **思考展示**：可查看AI的思考过程
+- **中断控制**：支持随时中断AI回复
+- **对话历史**：保存当前会话的聊天记录
+
+### 🎨 界面特性
+- **现代设计**：采用渐变背景和毛玻璃效果
+- **响应式布局**：适配桌面和移动设备
+- **动画效果**：流畅的交互动画
+- **用户友好**：直观的操作界面
+
+## 🔧 配置说明
+
 ### AI API配置
-在 `src/views/index.vue` 中可以修改AI服务提供商和API密钥。
+在 `src/views/index.vue` 中可以修改AI服务提供商和API密钥：
 
-## 📱 使用说明
-
-### 用户注册
-1. 访问登录页面
-2. 点击"立即注册"切换到注册模式
-3. 填写用户名（至少8位）、邮箱（可选）、密码（至少6位）
-4. 确认密码后点击"立即注册"
-
-### 用户登录
-1. 在登录页面输入用户名和密码
-2. 点击"立即登录"
-3. 登录成功后自动跳转到聊天页面
-
-### AI对话
-1. 在输入框中输入您的问题
-2. 按Ctrl+Enter或点击发送按钮
-3. 查看AI的思考过程和回复
-4. 支持多轮对话
+```javascript
+const response = await fetch('https://api.siliconflow.cn/v1/chat/completions', {
+  method: 'POST',
+  headers: { 
+    'Content-Type': 'application/json', 
+    'Accept': 'text/event-stream',
+    'Authorization': 'Bearer YOUR_API_KEY' // 修改这里
+  },
+  // ...
+})
+```
 
 ## 🔒 安全特性
 
@@ -146,85 +205,29 @@ const dbConfig = {
 - 前端路由守卫保护私有页面
 - API请求自动携带认证token
 - CORS配置防止恶意跨域请求
+- AI回复支持实时中断控制
 
-## 🎨 UI特性
+## 📋 可用脚本
 
-- 渐变背景和毛玻璃效果
-- 流畅的动画过渡
-- 响应式设计适配移动端
-- 深色/浅色主题适配
-- 优雅的聊天气泡设计
-
-## 🐛 常见问题
-
-### 1. 数据库连接失败
-- 检查MySQL服务是否启动
-- 确认数据库配置信息正确
-- 查看防火墙设置
-
-### 2. 前端无法访问后端API
-- 确认后端服务在端口3001正常运行
-- 检查CORS配置
-- 确认API地址配置正确
-
-### 3. 登录状态丢失
-- 检查浏览器本地存储
-- 确认JWT token未过期
-- 查看网络请求是否正常
-
-## 📝 开发说明
-
-### 添加新功能
-1. 后端: 在 `server/app.js` 中添加新的API路由
-2. 前端: 在 `src/utils/api.js` 中添加对应的API方法
-3. 页面: 在对应的Vue组件中调用API
-
-### 自定义样式
-- 主要样式在各个Vue组件的 `<style scoped>` 中
-- 全局样式在 `src/assets/` 目录下
-- 使用Element Plus主题自定义
-
-## 🤝 贡献指南
-
-1. Fork 项目
-2. 创建功能分支
-3. 提交更改
-4. 发起 Pull Request
-
-## 📄 许可证
-
-MIT License
-
-## 📞 联系方式
-
-如有问题或建议，欢迎提交Issue或联系开发者。
-
----
-
-**享受AI聊天的乐趣！** 🎉
-
-## Recommended IDE Setup
-
-[VSCode](https://code.visualstudio.com/) + [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
-
-## Customize configuration
-
-See [Vite Configuration Reference](https://vite.dev/config/).
-
-## Project Setup
-
-```sh
-npm install
-```
-
-### Compile and Hot-Reload for Development
-
-```sh
+```bash
+# 开发模式启动前端
 npm run dev
-```
 
-### Compile and Minify for Production
-
-```sh
+# 构建生产版本
 npm run build
+
+# 预览生产版本
+npm run preview
+
+# 启动后端服务
+npm run server
+
+# 开发模式启动后端
+npm run server:dev
+
+# 同时启动前后端（统一依赖模式）
+npm run start:unified
+
+# 安装所有依赖（分离模式）
+npm run install:all
 ```
