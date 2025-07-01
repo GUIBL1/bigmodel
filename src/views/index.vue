@@ -34,7 +34,9 @@
                 <div class="message-text">{{ message.content }}</div>
                 <div class="message-time">{{ formatTime(message.timestamp) }}</div>
               </div>
-              <div class="message-avatar user-avatar">👤</div>
+              <div class="message-avatar user-avatar">
+                👨‍💻
+              </div>
             </div>
             
             <!-- AI回复消息 -->
@@ -623,57 +625,108 @@ onMounted(() => {
 /* 消息项样式 */
 .message-item {
   margin-bottom: 25px;
+  width: 100%;
 }
 
 .message {
   display: flex;
-  gap: 15px;
-  max-width: 85%;
+  gap: 5px;
+  align-items: flex-start;
 }
 
 .message-avatar {
-  width: 40px;
-  height: 40px;
+  width: 42px;
+  height: 42px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 18px;
+  font-size: 20px;
   flex-shrink: 0;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.15);
+  border: 2px solid rgba(255, 255, 255, 0.3);
 }
 
 .user-avatar {
   background: linear-gradient(135deg, #667eea, #764ba2);
   color: white;
+  font-size: 18px;
 }
 
 .ai-avatar {
   background: linear-gradient(135deg, #f093fb, #f5576c);
   color: white;
+  font-size: 20px;
 }
 
 .message-content {
   flex: 1;
-  background: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.95);
   border-radius: 18px;
-  padding: 15px 20px;
-  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+  padding: 16px 20px;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
   position: relative;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 /* 用户消息样式 */
 .user-message {
   justify-content: flex-end;
+  margin-left: auto;
+  display: flex;
+  flex-direction: row;
+  max-width: 75%;
+  width: fit-content;
 }
 
 .user-message .message-content {
   background: linear-gradient(135deg, #667eea, #764ba2);
   color: white;
+  border-bottom-right-radius: 6px;
+  margin-right: 3px;
+  position: relative;
+  box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.user-message .message-content::after {
+  content: '';
+  position: absolute;
+  right: -10px;
+  top: 15px;
+  width: 0;
+  height: 0;
+  border: 10px solid transparent;
+  border-left-color: #667eea;
+  border-right: none;
+  z-index: 1;
 }
 
 /* AI消息样式 */
 .ai-message {
   justify-content: flex-start;
+  max-width: 75%;
+  width: fit-content;
+}
+
+.ai-message .message-content {
+  border-bottom-left-radius: 6px;
+  position: relative;
+  margin-left: 3px;
+}
+
+.ai-message .message-content::after {
+  content: '';
+  position: absolute;
+  left: -10px;
+  top: 15px;
+  width: 0;
+  height: 0;
+  border: 10px solid transparent;
+  border-right-color: rgba(255, 255, 255, 0.9);
+  border-left: none;
+  z-index: 1;
 }
 
 .message-text {
@@ -932,8 +985,15 @@ onMounted(() => {
     gap: 15px;
   }
   
-  .message {
-    max-width: 95%;
+  .user-message,
+  .ai-message {
+    max-width: 90%;
+  }
+  
+  .message-avatar {
+    width: 36px;
+    height: 36px;
+    font-size: 16px;
   }
   
   .feature-list {
