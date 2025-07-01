@@ -289,9 +289,9 @@ const sendMessage = async () => {
   scrollToBottom()
   
   try {
-    // 准备API请求数据
+    // 准备API请求数据 - Ollama格式
     const requestData = {
-      "model": "deepseek-ai/DeepSeek-R1-0528-Qwen3-8B", 
+      "model": "maoniang", // 我部署的模型名称
       "messages": [
         {
           "role": "user", 
@@ -301,13 +301,12 @@ const sendMessage = async () => {
       "stream": true // 启用流式响应
     }
     
-    // 使用fetch进行流式请求，而不是axios
-    const response = await fetch('https://api.siliconflow.cn/v1/chat/completions', {
+    // 调用本地Ollama API
+    const response = await fetch('http://localhost:11434/api/chat', {
       method: 'POST',
       headers: { 
-        'Content-Type': 'application/json', 
-        'Accept': 'text/event-stream',
-        'Authorization': 'Bearer sk-dhyofqmlqevepadtfbjjmtvelluvgoqixawhgqcyhmiysdtl'
+        'Content-Type': 'application/json'
+        // Ollama通常不需要Authorization header
       },
       body: JSON.stringify(requestData),
       signal: abortController.signal // 添加中断信号
@@ -387,45 +386,40 @@ const processStreamResponse = async (response) => {
         
         const trimmedLine = line.trim()
         
-        // 跳过空行和非数据行
-        if (!trimmedLine || !trimmedLine.startsWith('data: ')) {
+        // 跳过空行
+        if (!trimmedLine) {
           continue
         }
         
-        // 移除 "data: " 前缀
-        const jsonStr = trimmedLine.substring(6)
-        
-        // 检查是否结束
-        if (jsonStr === '[DONE]') {
-          console.log('流式响应结束')
-          break
+        // 移除 "data: " 前缀（如果存在）
+        let jsonStr = trimmedLine
+        if (trimmedLine.startsWith('data: ')) {
+          jsonStr = trimmedLine.substring(6)
         }
         
         try {
           // 解析JSON数据
           const jsonData = JSON.parse(jsonStr)
           
-          // 检查数据结构
-          if (jsonData.choices && jsonData.choices[0] && jsonData.choices[0].delta) {
-            const delta = jsonData.choices[0].delta
+          // Ollama的响应格式：检查message.content
+          if (jsonData.message && jsonData.message.content) {
+            const content = jsonData.message.content
             
-            // 处理思考内容
-            if (delta.reasoning_content) {
-              accumulatedThinking += delta.reasoning_content
-              currentResponse.thinking = accumulatedThinking
-            }
-            
-            // 处理回复内容
-            if (delta.content) {
-              accumulatedContent += delta.content
-              currentResponse.content = accumulatedContent
-            }
+            // Ollama通常不分思考和回复内容，直接累积所有内容
+            accumulatedContent += content
+            currentResponse.content = accumulatedContent
             
             // 实时滚动到底部
             scrollToBottom()
             
             // 添加小延迟以创建打字效果
             await new Promise(resolve => setTimeout(resolve, 30))
+          }
+          
+          // 检查是否完成
+          if (jsonData.done === true) {
+            console.log('Ollama流式响应结束')
+            break
           }
           
         } catch (parseError) {

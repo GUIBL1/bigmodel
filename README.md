@@ -183,20 +183,60 @@ CREATE TABLE users (
 
 ## 🔧 配置说明
 
-### AI API配置
-在 `src/views/index.vue` 中可以修改AI服务提供商和API密钥：
+### 🤖 AI模型配置
+
+本项目已配置为使用本地Ollama部署的AI模型。确保您已经：
+
+#### 1. 安装Ollama
+```bash
+# Windows
+# 前往 https://ollama.ai 下载并安装
+
+# 验证安装
+ollama --version
+```
+
+#### 2. 下载模型
+```bash
+# 下载maoniang模型（或其他您喜欢的模型）
+ollama pull maoniang
+
+# 查看已安装的模型
+ollama list
+```
+
+#### 3. 启动Ollama服务
+```bash
+# 启动Ollama服务（默认端口11434）
+ollama serve
+```
+
+#### 4. 配置模型名称
+在 `src/views/index.vue` 中修改模型名称：
 
 ```javascript
-const response = await fetch('https://api.siliconflow.cn/v1/chat/completions', {
+const requestData = {
+  "model": "maoniang", // 修改为您安装的模型名称
+  "messages": [...],
+  "stream": true
+}
+
+const response = await fetch('http://localhost:11434/api/chat', {
   method: 'POST',
   headers: { 
-    'Content-Type': 'application/json', 
-    'Accept': 'text/event-stream',
-    'Authorization': 'Bearer YOUR_API_KEY' // 修改这里
+    'Content-Type': 'application/json'
   },
-  // ...
+  body: JSON.stringify(requestData)
 })
 ```
+
+#### 支持的其他模型
+- `qwen:7b` - 通义千问7B
+- `llama2:7b` - Llama 2 7B  
+- `codellama:7b` - Code Llama 7B
+- `mistral:7b` - Mistral 7B
+
+使用命令 `ollama pull <model_name>` 下载后，修改代码中的model字段即可。
 
 ## 🔒 安全特性
 
