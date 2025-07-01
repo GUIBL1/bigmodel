@@ -74,24 +74,57 @@ def query_rag():
         rag = get_rag_service()
         result = rag.query(question)
         
-        # 检查是否是向量维度不匹配错误
-        if not result.get("success") and result.get("dimension_mismatch"):
-            # 自动重建索引
-            logger.info("检测到向量维度不匹配，尝试自动重建索引...")
+        # 检查是否需要重建索引
+        needs_rebuild = False
+        rebuild_reason = ""
+        
+        if not result.get("success"):
+            error_msg = result.get("error", "").lower()
+            
+            # 检查是否是向量维度不匹配错误
+            if result.get("dimension_mismatch"):
+                needs_rebuild = True
+                rebuild_reason = "向量维度不匹配"
+            # 检查是否是"没有找到相关文档"错误
+            elif "没有找到相关文档" in error_msg or "没有找到文档索引" in error_msg:
+                # 检查是否有文档文件但索引为空
+                doc_count = rag.get_document_count()
+                if doc_count == 0:
+                    # 检查documents目录是否有文件
+                    import os
+                    documents_path = rag.documents_path
+                    if os.path.exists(documents_path):
+                        file_count = sum(1 for f in os.listdir(documents_path) 
+                                       if os.path.isfile(os.path.join(documents_path, f)))
+                        if file_count > 0:
+                            needs_rebuild = True
+                            rebuild_reason = f"发现{file_count}个文档文件但索引为空"
+        
+        # 执行自动重建
+        if needs_rebuild:
+            logger.info(f"检测到需要重建索引: {rebuild_reason}")
+            logger.info("尝试自动重建索引...")
+            
             if rag.clear_index():
                 # 重新添加所有文档
                 if rag.add_documents():
                     # 重新查询
+                    logger.info("索引重建完成，重新执行查询...")
                     result = rag.query(question)
                     if result.get("success"):
                         result["rebuilt_index"] = True
+                        result["rebuild_reason"] = rebuild_reason
                         logger.info("索引重建成功，查询已完成")
                     else:
                         logger.error("索引重建后查询仍然失败")
+                        result["rebuild_attempted"] = True
+                        result["rebuild_reason"] = rebuild_reason
                 else:
                     logger.error("重新添加文档失败")
+                    result["rebuild_failed"] = "添加文档失败"
             else:
                 logger.error("索引重建失败")
+                result["rebuild_failed"] = "清空索引失败"
         
         return jsonify(result)
         
@@ -249,6 +282,33 @@ def rebuild_index():
             
     except Exception as e:
         logger.error(f"重建索引失败: {e}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@app.route('/api/index/clear', methods=['POST'])
+def clear_index():
+    """清空索引"""
+    try:
+        rag = get_rag_service()
+        
+        # 清空现有索引
+        success = rag.clear_index()
+        
+        if success:
+            return jsonify({
+                "success": True,
+                "message": "索引已清空"
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "error": "索引清空失败"
+            }), 500
+            
+    except Exception as e:
+        logger.error(f"清空索引失败: {e}")
         return jsonify({
             "success": False,
             "error": str(e)
