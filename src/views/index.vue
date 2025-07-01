@@ -8,6 +8,9 @@
         </div>
         <div class="user-info">
           <span class="welcome-text">欢迎，{{ userStore.userInfo?.username || '用户' }}</span>
+          <el-button type="info" @click="$router.push('/rag')" size="small">
+            📚 知识库管理
+          </el-button>
           <el-button type="primary" @click="handleLogout" size="small">退出登录</el-button>
         </div>
       </div>
@@ -119,18 +122,34 @@
         <!-- 输入区域 -->
         <div class="input-section">
           <div class="input-container">
+            <!-- RAG模式切换 -->
+            <div class="rag-switch-container">
+              <el-switch
+                v-model="ragMode"
+                size="large"
+                active-text="📚 RAG模式"
+                inactive-text="💬 普通对话"
+                active-color="#667eea"
+                inactive-color="#dcdfe6"
+              />
+              <el-tooltip content="RAG模式使用知识库增强回答准确性" placement="top">
+                <el-icon class="info-icon"><info-filled /></el-icon>
+              </el-tooltip>
+            </div>
+            
             <el-input
               v-model="userMessage"
               type="textarea"
               :rows="3"
-              placeholder="请输入您的问题或需求..."
+              :placeholder="ragMode ? '请输入您想查询的问题，我会基于知识库为您回答...' : '请输入您的问题或需求...'"
               class="message-input"
               @keydown.ctrl.enter="sendMessage"
               :disabled="loading"
             />
             <div class="input-actions">
               <div class="input-tips">
-                <span>💡 提示：按 Ctrl + Enter 快速发送</span>
+                <span v-if="ragMode">🔍 当前为RAG模式，将基于知识库回答</span>
+                <span v-else>💡 提示：按 Ctrl + Enter 快速发送</span>
               </div>
               <div class="button-group">
                 <!-- 停止按钮 -->
@@ -167,6 +186,7 @@
 import { ref, reactive, onMounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { InfoFilled } from '@element-plus/icons-vue'
 import axios from 'axios'
 import { useUserStore } from '@/stores/user'
 
@@ -179,6 +199,7 @@ const userMessage = ref('') // 用户输入的消息
 const loading = ref(false) // 加载状态
 const chatHistory = ref([]) // 聊天历史记录
 const chatHistoryRef = ref(null) // 聊天历史容器引用
+const ragMode = ref(false) // RAG模式开关
 
 // 中断控制器
 let abortController = null
@@ -264,16 +285,18 @@ const sendMessage = async () => {
     return
   }
   
+  // 保存用户输入并清空输入框
+  const inputContent = userMessage.value.trim()
+  
   // 添加用户消息到历史记录
   const userMsg = {
     role: 'user',
-    content: userMessage.value.trim(),
-    timestamp: Date.now()
+    content: inputContent,
+    timestamp: Date.now(),
+    isRAG: ragMode.value // 标记是否为RAG模式
   }
   chatHistory.value.push(userMsg)
   
-  // 保存用户输入并清空输入框
-  const inputContent = userMessage.value.trim()
   userMessage.value = ''
   
   // 设置加载状态
@@ -291,60 +314,115 @@ const sendMessage = async () => {
   scrollToBottom()
   
   try {
-    // 准备API请求数据 - Ollama格式
-    const requestData = {
-      "model": "maoniang", // 我部署的模型名称
-      "messages": [
-        {
-          "role": "user", 
-          "content": inputContent
-        }
-      ],
-      "stream": true // 启用流式响应
+    if (ragMode.value) {
+      // RAG模式：调用RAG API
+      await handleRAGQuery(inputContent)
+    } else {
+      // 普通模式：调用Ollama API
+      await handleNormalChat(inputContent)
     }
-    
-    // 调用本地Ollama API
-    const response = await fetch('http://localhost:11434/api/chat', {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json'
-        // Ollama通常不需要Authorization header
-      },
-      body: JSON.stringify(requestData),
-      signal: abortController.signal // 添加中断信号
-    })
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
-    
-    // 处理流式响应
-    await processStreamResponse(response)
-    
   } catch (error) {
-    // 检查是否是用户主动中断
-    if (error.name === 'AbortError' || error.code === 'ERR_CANCELED' || isStoppedByUser) {
-      console.log('请求被用户中断')
-      return // 中断情况下不显示错误消息
+    console.error('发送消息失败:', error)
+    
+    if (!isStoppedByUser) {
+      ElMessage.error('发送消息失败，请重试')
+      
+      // 添加错误消息到历史记录
+      chatHistory.value.push({
+        role: 'assistant',
+        content: '抱歉，我遇到了一些问题，请稍后重试。',
+        timestamp: Date.now(),
+        error: true
+      })
     }
-    
-    console.error('发送消息错误:', error)
-    ElMessage.error('发送失败，请稍后重试')
-    
-    // 添加错误消息到聊天历史
-    chatHistory.value.push({
-      role: 'assistant',
-      content: '抱歉，我遇到了一些问题，请稍后再试。',
-      timestamp: Date.now(),
-      thinking: '',
-      showThinking: false
-    })
   } finally {
     loading.value = false
-    abortController = null // 清空控制器
-    isStoppedByUser = false // 重置停止标志
     scrollToBottom()
   }
+}
+
+// 处理RAG查询
+const handleRAGQuery = async (question) => {
+  try {
+    // 直接调用RAG服务，避免代理超时问题
+    const response = await axios.post('http://127.0.0.1:5001/api/query', {
+      question: question
+    }, {
+      signal: abortController.signal,
+      timeout: 120000 // 2分钟超时
+    })
+    
+    if (response.data.success) {
+      const ragResult = response.data
+      
+      // 构造AI回复消息
+      let replyContent = ragResult.answer
+      
+      // 如果有引用来源，添加到回复中
+      if (ragResult.sources && ragResult.sources.length > 0) {
+        replyContent += '\n\n📚 **参考来源：**\n'
+        ragResult.sources.forEach((source, index) => {
+          replyContent += `${index + 1}. ${source.file_name}`
+          if (source.page_label && source.page_label !== '未知') {
+            replyContent += ` (第${source.page_label}页)`
+          }
+          if (source.score) {
+            replyContent += ` [相似度: ${(source.score * 100).toFixed(1)}%]`
+          }
+          replyContent += '\n'
+        })
+      }
+      
+      // 添加RAG回复到历史记录
+      chatHistory.value.push({
+        role: 'assistant',
+        content: replyContent,
+        timestamp: Date.now(),
+        isRAG: true,
+        sources: ragResult.sources
+      })
+    } else {
+      throw new Error(response.data.error || 'RAG查询失败')
+    }
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      return // 用户取消了请求
+    }
+    throw error
+  }
+}
+
+// 处理普通对话
+const handleNormalChat = async (inputContent) => {
+  // 准备API请求数据 - Ollama格式
+  const requestData = {
+    "model": "maoniang", // 我部署的模型名称
+    "messages": [
+      {
+        "role": "user", 
+        "content": inputContent
+      }
+    ],
+    "stream": true // 启用流式响应
+  }
+  
+  // 调用本地Ollama API
+  const response = await fetch('http://localhost:11434/api/chat', {
+    method: 'POST',
+    headers: { 
+      'Content-Type': 'application/json'
+      // Ollama通常不需要Authorization header
+    },
+    body: JSON.stringify(requestData),
+    signal: abortController.signal // 添加中断信号
+  })
+  
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`)
+  }
+  
+  // 处理流式响应
+  await processStreamResponse(response)
 }
 
 // 处理流式响应数据
@@ -877,6 +955,23 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 15px;
+}
+
+/* RAG切换样式 */
+.rag-switch-container {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 15px;
+  background: rgba(102, 126, 234, 0.05);
+  border-radius: 12px;
+  border-left: 4px solid #667eea;
+}
+
+.info-icon {
+  color: #667eea;
+  cursor: pointer;
+  font-size: 16px;
 }
 
 .message-input {

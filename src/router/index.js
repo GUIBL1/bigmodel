@@ -23,6 +23,19 @@ const router = createRouter({
       }
     },
     {
+      path: '/index',
+      redirect: '/'
+    },
+    {
+      path: '/rag',
+      name: 'RAG',
+      component: () => import('@/views/rag.vue'),
+      meta: { 
+        title: 'RAG知识库管理',
+        requiresAuth: true // 需要登录验证
+      }
+    },
+    {
       path: '/:pathMatch(.*)*',
       redirect: '/login' // 未匹配的路径重定向到登录页
     }

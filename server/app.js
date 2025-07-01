@@ -4,6 +4,7 @@ const mysql = require('mysql2/promise');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const cors = require('cors');
+const { createProxyMiddleware } = require('http-proxy-middleware');
 
 const app = express();
 const PORT = 3001;
@@ -232,6 +233,34 @@ app.get('/api/profile', authenticateToken, (req, res) => {
     user: req.user
   });
 });
+
+// RAG服务代理路由
+app.use('/api/rag', createProxyMiddleware({
+  target: 'http://127.0.0.1:5001', // 使用127.0.0.1而不是localhost
+  changeOrigin: true,
+  timeout: 120000, // 2分钟超时
+  proxyTimeout: 120000,
+  pathRewrite: {
+    '^/api/rag': '/api'
+  },
+  onProxyReq: (proxyReq, req, res) => {
+    console.log('代理请求:', req.method, req.originalUrl, '-> http://127.0.0.1:5001' + req.url.replace('/api/rag', '/api'));
+    // 设置请求超时
+    proxyReq.setTimeout(120000);
+  },
+  onProxyRes: (proxyRes, req, res) => {
+    console.log('代理响应:', proxyRes.statusCode, req.originalUrl);
+  },
+  onError: (err, req, res) => {
+    console.error('RAG服务代理错误:', err.message);
+    if (!res.headersSent) {
+      res.status(503).json({
+        success: false,
+        message: 'RAG服务不可用：' + err.message
+      });
+    }
+  }
+}));
 
 // 启动服务器
 app.listen(PORT, async () => {

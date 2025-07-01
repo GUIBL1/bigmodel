@@ -28,3 +28,17 @@ coverage
 *.sw?
 
 *.tsbuildinfo
+
+# RAG Service
+rag_service/vector_store/
+rag_service/documents/*.pdf
+rag_service/documents/*.docx
+rag_service/documents/*.doc
+rag_service/documents/*.xlsx
+rag_service/documents/*.xls
+rag_service/documents/*.txt
+rag_service/embeddings_cache/
+rag_service/rag_env/
+rag_service/__pycache__/
+rag_service/*.pyc
+rag_service/.env.local
