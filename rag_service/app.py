@@ -10,6 +10,10 @@ from flask_cors import CORS
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 
+# 设置HuggingFace镜像
+os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
+os.environ['HUGGINGFACE_HUB_CACHE'] = './embeddings_cache'
+
 from rag_core import get_rag_service
 
 # 加载环境变量

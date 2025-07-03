@@ -94,7 +94,7 @@ class RAGService:
         def check_internet_connection():
             try:
                 import requests
-                response = requests.get("https://huggingface.co", timeout=3)
+                response = requests.get("https://hf-mirror.com", timeout=3)
                 return response.status_code == 200
             except:
                 return False
@@ -104,17 +104,41 @@ class RAGService:
         
         if has_internet:
             try:
+                # 设置HuggingFace镜像环境变量
+                import os
+                os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
+                
+                # 使用配置的缓存路径
+                cache_path = os.path.join(os.getcwd(), "embeddings_cache")
+                
                 # 有网络时尝试在线嵌入模型
                 logger.info(f"尝试加载在线嵌入模型: {self.embedding_model}")
                 self.embed_model = HuggingFaceEmbedding(
                     model_name=self.embedding_model,
-                    cache_folder="./embeddings_cache"
+                    cache_folder=cache_path,
+                    trust_remote_code=True
                 )
                 logger.info(f"嵌入模型设置完成: {self.embedding_model}")
                 self.offline_mode = False
                 return
             except Exception as e:
                 logger.warning(f"在线嵌入模型加载失败: {e}")
+                logger.info("尝试使用本地缓存模型...")
+                
+                # 尝试使用已缓存的模型
+                try:
+                    cache_path = os.path.join(os.getcwd(), "embeddings_cache")
+                    if os.path.exists(cache_path):
+                        self.embed_model = HuggingFaceEmbedding(
+                            model_name=self.embedding_model,
+                            cache_folder=cache_path,
+                            trust_remote_code=True
+                        )
+                        logger.info(f"使用缓存的嵌入模型: {self.embedding_model}")
+                        self.offline_mode = False
+                        return
+                except Exception as cache_error:
+                    logger.warning(f"缓存模型加载失败: {cache_error}")
         
         # 无网络或在线模式失败，切换到离线模式
         logger.info("切换到离线模式...")
@@ -144,7 +168,8 @@ class RAGService:
                             ngram_range=(1, 2)
                         )
                     self.is_fitted = False
-                    self.vocab_cache_path = Path("./embeddings_cache/tfidf_vocab.pkl")
+                    cache_dir = os.path.join(os.getcwd(), "embeddings_cache")
+                    self.vocab_cache_path = Path(cache_dir) / "tfidf_vocab.pkl"
                     self.vocab_cache_path.parent.mkdir(exist_ok=True)
                 
                 def _chinese_tokenizer(self, text):
@@ -226,10 +251,15 @@ class RAGService:
     def _setup_vector_store(self):
         """设置向量存储"""
         try:
-            # 创建ChromaDB客户端
+            # 创建ChromaDB客户端，禁用遥测
+            chroma_settings = ChromaSettings(
+                anonymized_telemetry=False,
+                allow_reset=True
+            )
+            
             chroma_client = chromadb.PersistentClient(
                 path=str(self.vector_store_path),
-                settings=ChromaSettings(anonymized_telemetry=False)
+                settings=chroma_settings
             )
             
             # 获取或创建集合
@@ -257,7 +287,6 @@ class RAGService:
                 self.index = None
                 self.query_engine = None
                 return
-            
             # 根据版本配置
             if Settings is not None:
                 # 新版本使用Settings
