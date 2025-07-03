@@ -147,51 +147,6 @@
           </div>
         </el-card>
 
-        <!-- RAG测试卡片 -->
-        <el-card class="test-card" shadow="hover">
-          <template #header>
-            <div class="card-header">
-              <span>🧪 RAG测试</span>
-            </div>
-          </template>
-          <div class="test-section">
-            <el-input
-              v-model="testQuestion"
-              type="textarea"
-              :rows="3"
-              placeholder="输入测试问题..."
-              :disabled="testLoading"
-            />
-            <div class="test-actions">
-              <el-button 
-                type="primary" 
-                @click="testRAG" 
-                :loading="testLoading"
-                :disabled="!testQuestion.trim()"
-              >
-                🔍 测试查询
-              </el-button>
-              <el-button @click="testQuestion = ''">清空</el-button>
-            </div>
-          </div>
-          
-          <div v-if="testResult" class="test-result">
-            <h4>测试结果:</h4>
-            <div class="result-content">
-              <p><strong>问题:</strong> {{ testResult.question }}</p>
-              <p><strong>回答:</strong></p>
-              <div class="answer-text">{{ testResult.answer }}</div>
-              <div v-if="testResult.sources && testResult.sources.length > 0" class="sources">
-                <p><strong>引用来源:</strong></p>
-                <ul>
-                  <li v-for="(source, index) in testResult.sources" :key="index">
-                    {{ source.file_name }} (相似度: {{ (source.score * 100).toFixed(2) }}%)
-                  </li>
-                </ul>
-              </div>
-            </div>
-          </div>
-        </el-card>
       </div>
     </main>
   </div>
@@ -216,9 +171,6 @@ const documentsInfo = ref({})
 const documentsLoading = ref(false)
 const rebuildLoading = ref(false)
 const deletingFiles = ref([])
-const testQuestion = ref('')
-const testResult = ref(null)
-const testLoading = ref(false)
 const uploadRef = ref()
 
 // 上传URL
@@ -361,33 +313,6 @@ const rebuildIndex = async () => {
     }
   } finally {
     rebuildLoading.value = false
-  }
-}
-
-// 测试RAG
-const testRAG = async () => {
-  if (!testQuestion.value.trim()) {
-    ElMessage.warning('请输入测试问题')
-    return
-  }
-  
-  testLoading.value = true
-  try {
-    const response = await axios.post('http://localhost:3001/api/rag/query', {
-      question: testQuestion.value.trim()
-    })
-    
-    if (response.data.success) {
-      testResult.value = response.data
-      ElMessage.success('RAG测试完成')
-    } else {
-      ElMessage.error(response.data.error || 'RAG测试失败')
-    }
-  } catch (error) {
-    console.error('RAG测试失败:', error)
-    ElMessage.error('RAG测试失败')
-  } finally {
-    testLoading.value = false
   }
 }
 
@@ -585,61 +510,6 @@ onMounted(() => {
 
 .file-icon {
   color: #667eea;
-}
-
-/* 测试卡片 */
-.test-card {
-  grid-column: 1 / -1;
-}
-
-.test-section {
-  margin-bottom: 20px;
-}
-
-.test-actions {
-  display: flex;
-  gap: 10px;
-  margin-top: 15px;
-}
-
-.test-result {
-  background: rgba(102, 126, 234, 0.05);
-  border-radius: 10px;
-  padding: 20px;
-  border-left: 4px solid #667eea;
-}
-
-.test-result h4 {
-  margin: 0 0 15px 0;
-  color: #2c3e50;
-}
-
-.result-content p {
-  margin: 10px 0;
-  color: #2c3e50;
-}
-
-.answer-text {
-  background: white;
-  padding: 15px;
-  border-radius: 8px;
-  margin: 10px 0;
-  line-height: 1.6;
-  white-space: pre-wrap;
-}
-
-.sources {
-  margin-top: 15px;
-}
-
-.sources ul {
-  margin: 10px 0;
-  padding-left: 20px;
-}
-
-.sources li {
-  margin: 5px 0;
-  color: #666;
 }
 
 /* 响应式设计 */
