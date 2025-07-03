@@ -1,6 +1,74 @@
 """
 RAG服务核心模块
-使用LlamaIndex实现本地RAG功能
+=================
+
+本模块是RAG（检索增强生成）服务的核心实现，提供以下主要功能：
+
+主要功能：
+---------
+1. 文档向量化与存储：支持多种文档格式的文本提取和向量化
+2. 智能检索：基于语义相似度的文档检索
+3. 生成回答：结合检索内容和大语言模型生成准确回答
+4. 在线/离线模式：支持网络环境和离线环境的自动切换
+
+技术架构：
+---------
+- LLM: 使用 Ollama 作为大语言模型服务
+- 向量存储: 使用 ChromaDB 作为向量数据库
+- 嵌入模型: 支持 HuggingFace 在线模型和离线 TF-IDF 方案
+- 索引框架: 使用 LlamaIndex 构建检索索引
+
+支持的文档格式：
+-------------
+- 文本文件 (.txt)
+- Markdown 文件 (.md)
+- PDF 文件 (.pdf，需安装 pypdf)
+- Word 文档 (.docx，计划支持)
+
+部署模式：
+---------
+- 在线模式：需要网络连接，使用 HuggingFace 嵌入模型
+- 离线模式：无网络连接时自动切换，使用 TF-IDF 向量化方案
+
+
+创建日期: 2025年7月
+版本: 1.0
+
+模块结构：
+========
+
+1. 依赖导入模块
+   - 标准库导入
+   - 第三方库导入（LlamaIndex, ChromaDB等）
+   - 版本兼容性处理
+
+2. RAGService 核心类
+   - __init__: 服务初始化和配置
+   - _setup_* 方法: 各组件初始化
+   - add_documents: 文档添加和向量化
+   - query: 智能问答查询
+   - _offline_* 方法: 离线模式处理
+   - 工具方法: 状态检查、索引管理等
+
+3. 全局服务管理
+   - 单例模式实现
+   - 环境变量配置
+   - 统一访问入口
+
+使用示例：
+========
+
+```python
+# 获取服务实例
+rag = get_rag_service()
+
+# 添加文档
+rag.add_documents(['path/to/document.txt'])
+
+# 查询问答
+result = rag.query("您的问题")
+print(result['answer'])
+```
 """
 
 import os
@@ -8,8 +76,13 @@ import logging
 from typing import List, Optional
 from pathlib import Path
 
+# 依赖库导入模块
+# ===============
+# 尝试导入 LlamaIndex 相关组件，支持新旧版本兼容
+
 try:
-    # 尝试新版本导入
+    # 尝试新版本导入 (llama-index >= 0.9.0)
+    # 新版本将核心组件移到了 llama_index.core 模块下
     from llama_index.core import (
         VectorStoreIndex, 
         SimpleDirectoryReader, 
@@ -21,7 +94,8 @@ try:
     from llama_index.embeddings.huggingface import HuggingFaceEmbedding
     from llama_index.vector_stores.chroma import ChromaVectorStore
 except ImportError:
-    # 回退到旧版本导入
+    # 回退到旧版本导入 (llama-index < 0.9.0)
+    # 旧版本的组件直接在 llama_index 模块下
     try:
         from llama_index import (
             VectorStoreIndex, 
@@ -33,21 +107,51 @@ except ImportError:
         from llama_index.llms import Ollama
         from llama_index.embeddings import HuggingFaceEmbedding
         from llama_index.vector_stores import ChromaVectorStore
-        Settings = None  # 旧版本使用ServiceContext
+        Settings = None  # 旧版本使用ServiceContext而不是Settings
     except ImportError as e:
         print(f"导入LlamaIndex失败: {e}")
         print("请先运行: pip install llama-index")
         raise
 
 import chromadb
+# ChromaDB 配置导入
 from chromadb.config import Settings as ChromaSettings
 
-# 配置日志
+# 日志配置模块
+# ============
+# 配置日志系统，用于记录 RAG 服务的运行状态和调试信息
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class RAGService:
-    """RAG服务类"""
+    """
+    RAG（检索增强生成）服务类
+    ========================
+    
+    这是 RAG 系统的核心服务类，提供完整的文档检索和问答功能。
+    
+    主要职责：
+    --------
+    1. 管理大语言模型（LLM）连接和配置
+    2. 处理文档的向量化和存储
+    3. 实现语义检索和答案生成
+    4. 支持在线和离线两种运行模式
+    5. 提供向量数据库的管理功能
+    
+    架构组件：
+    ---------
+    - LLM: Ollama 服务，负责文本生成
+    - 嵌入模型: HuggingFace 模型或离线 TF-IDF
+    - 向量存储: ChromaDB 持久化向量数据库
+    - 索引系统: LlamaIndex 检索框架
+    
+    使用场景：
+    ---------
+    - 企业知识库问答
+    - 文档智能检索
+    - 内容推荐系统
+    - 客服机器人
+    """
     
     def __init__(self, 
                  ollama_base_url: str = "http://localhost:11434",
@@ -58,7 +162,30 @@ class RAGService:
                  chunk_size: int = 1024,
                  chunk_overlap: int = 20,
                  top_k: int = 5):
+        """
+        初始化 RAG 服务
         
+        参数说明：
+        --------
+        ollama_base_url: str
+            Ollama 服务的基础 URL 地址
+        model_name: str  
+            使用的大语言模型名称
+        embedding_model: str
+            文本嵌入模型名称
+        documents_path: str
+            文档存储目录路径
+        vector_store_path: str
+            向量数据库存储路径
+        chunk_size: int
+            文档分块大小（字符数）
+        chunk_overlap: int
+            文档分块重叠大小
+        top_k: int
+            检索时返回的相关文档数量
+        """
+        
+        # 存储配置参数
         self.ollama_base_url = ollama_base_url
         self.model_name = model_name
         self.embedding_model = embedding_model
@@ -67,21 +194,38 @@ class RAGService:
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.top_k = top_k
-        self.offline_mode = False  # 初始化离线模式标志
+        self.offline_mode = False  # 离线模式标志，自动检测网络状态
         
-        # 初始化组件
-        self._setup_llm()
-        self._setup_embedding()
-        self._setup_vector_store()
-        self._setup_index()
+        # 组件初始化序列
+        # ==============
+        # 按依赖关系依次初始化各个组件
+        self._setup_llm()           # 1. 初始化大语言模型
+        self._setup_embedding()     # 2. 初始化嵌入模型
+        self._setup_vector_store()  # 3. 初始化向量存储
+        self._setup_index()         # 4. 初始化检索索引
         
     def _setup_llm(self):
-        """设置LLM"""
+        """
+        大语言模型初始化模块
+        ===================
+        
+        功能说明：
+        --------
+        - 连接到 Ollama 服务
+        - 配置模型参数和超时设置
+        - 验证模型可用性
+        
+        异常处理：
+        --------
+        - 连接失败时抛出异常
+        - 记录详细的错误信息
+        """
         try:
+            # 创建 Ollama 客户端实例
             self.llm = Ollama(
                 model=self.model_name,
                 base_url=self.ollama_base_url,
-                request_timeout=60.0
+                request_timeout=60.0  # 设置 60 秒超时
             )
             logger.info(f"LLM设置完成: {self.model_name}")
         except Exception as e:
@@ -89,9 +233,40 @@ class RAGService:
             raise
     
     def _setup_embedding(self):
-        """设置嵌入模型，支持离线模式"""
-        # 首先检查网络连接
+        """
+        嵌入模型初始化模块
+        =================
+        
+        功能说明：
+        --------
+        - 自动检测网络连接状态
+        - 在线模式：使用 HuggingFace 预训练模型
+        - 离线模式：使用 TF-IDF 向量化方案
+        - 智能缓存管理
+        
+        模式切换逻辑：
+        -----------
+        1. 首先尝试网络连接检测
+        2. 有网络：加载 HuggingFace 模型
+        3. 无网络或加载失败：切换到离线 TF-IDF 模式
+        4. 支持模型缓存复用
+        
+        离线方案特点：
+        -----------
+        - 使用 scikit-learn TF-IDF 向量化
+        - 支持中文分词（可选 jieba）
+        - 自适应词汇表构建
+        - 与在线模式兼容的接口
+        """
+        # 网络连接检测子模块
         def check_internet_connection():
+            """
+            检查网络连接状态
+            
+            返回值：
+            ------
+            bool: True 表示网络可用，False 表示无网络
+            """
             try:
                 import requests
                 response = requests.get("https://hf-mirror.com", timeout=3)
@@ -249,7 +424,22 @@ class RAGService:
             raise
     
     def _setup_vector_store(self):
-        """设置向量存储"""
+        """
+        向量存储初始化模块
+        =================
+        
+        功能说明：
+        --------
+        - 配置 ChromaDB 持久化客户端
+        - 创建或连接向量集合
+        - 设置向量存储包装器
+        
+        存储特性：
+        --------
+        - 持久化存储：数据保存到磁盘
+        - 禁用遥测：保护隐私
+        - 自动集合管理：智能创建和连接
+        """
         try:
             # 创建ChromaDB客户端，禁用遥测
             chroma_settings = ChromaSettings(
@@ -279,17 +469,43 @@ class RAGService:
             raise
     
     def _setup_index(self):
-        """设置索引"""
+        """
+        检索索引初始化模块
+        =================
+        
+        功能说明：
+        --------
+        - 配置 LlamaIndex 检索系统
+        - 支持新旧版本兼容性
+        - 创建查询引擎
+        
+        版本兼容：
+        --------
+        - 新版本：使用 Settings 全局配置
+        - 旧版本：使用 ServiceContext 上下文
+        
+        索引管理：
+        --------
+        - 尝试加载现有索引
+        - 创建新索引（如果不存在）
+        - 配置查询引擎参数
+        
+        离线模式：
+        --------
+        - 离线模式下跳过 LlamaIndex 设置
+        - 使用自定义检索逻辑
+        """
         try:
-            # 检查是否为离线模式
+            # 离线模式检查
             if self.offline_mode:
                 logger.info("离线模式：跳过LlamaIndex索引设置")
                 self.index = None
                 self.query_engine = None
                 return
-            # 根据版本配置
+                
+            # 版本兼容配置处理
             if Settings is not None:
-                # 新版本使用Settings
+                # 新版本 LlamaIndex 使用 Settings 全局配置
                 Settings.llm = self.llm
                 Settings.embed_model = self.embed_model
                 if hasattr(Settings, 'node_parser'):
@@ -299,7 +515,7 @@ class RAGService:
                     )
                 service_context = None
             else:
-                # 旧版本使用ServiceContext
+                # 旧版本 LlamaIndex 使用 ServiceContext
                 service_context = ServiceContext.from_defaults(
                     llm=self.llm,
                     embed_model=self.embed_model,
@@ -352,14 +568,41 @@ class RAGService:
             raise
     
     def add_documents(self, file_paths: Optional[List[str]] = None) -> bool:
-        """添加文档到向量存储"""
+        """
+        文档添加模块
+        ==========
+        
+        功能说明：
+        --------
+        - 支持单文件或批量文档添加
+        - 自动文本提取和分块处理
+        - 向量化并存储到数据库
+        
+        参数说明：
+        --------
+        file_paths: Optional[List[str]]
+            指定要添加的文件路径列表，如果为 None 则处理整个文档目录
+            
+        返回值：
+        ------
+        bool: 成功返回 True，失败返回 False
+        
+        处理流程：
+        --------
+        1. 检查运行模式（在线/离线）
+        2. 加载和解析文档
+        3. 文本分块处理
+        4. 向量化存储
+        5. 更新索引
+        """
         try:
-            # 检查离线模式
+            # 运行模式检查
             if self.offline_mode:
                 return self._offline_add_documents(file_paths)
             
+            # 文档加载处理
             if file_paths:
-                # 处理指定文件
+                # 处理指定的文件列表
                 documents = []
                 for file_path in file_paths:
                     if os.path.exists(file_path):
@@ -368,7 +611,7 @@ class RAGService:
                         documents.extend(docs)
                         logger.info(f"加载文档: {file_path}")
             else:
-                # 处理文档目录中的所有文件
+                # 处理整个文档目录
                 if not self.documents_path.exists():
                     self.documents_path.mkdir(parents=True, exist_ok=True)
                     logger.info(f"创建文档目录: {self.documents_path}")
@@ -376,15 +619,16 @@ class RAGService:
                 
                 reader = SimpleDirectoryReader(
                     input_dir=str(self.documents_path),
-                    recursive=True
+                    recursive=True  # 递归处理子目录
                 )
                 documents = reader.load_data()
             
+            # 文档验证
             if not documents:
                 logger.warning("没有找到文档")
                 return True
             
-            # 添加文档到索引
+            # 批量添加文档到索引
             for doc in documents:
                 self.index.insert(doc)
             
@@ -396,8 +640,41 @@ class RAGService:
             return False
     
     def query(self, question: str) -> dict:
-        """查询RAG系统"""
+        """
+        智能问答查询模块
+        ==============
+        
+        功能说明：
+        --------
+        - 语义检索相关文档
+        - 结合 LLM 生成准确回答
+        - 提供答案来源追踪
+        
+        参数说明：
+        --------
+        question: str
+            用户提出的问题
+            
+        返回值：
+        ------
+        dict: 包含以下字段的响应字典
+            - success: bool, 查询是否成功
+            - answer: str, 生成的回答
+            - sources: list, 答案来源文档信息
+            - question: str, 原始问题
+            - error: str, 错误信息（如果失败）
+            
+        查询流程：
+        --------
+        1. 输入验证和预处理
+        2. 模式检查（在线/离线）
+        3. 语义检索相关文档
+        4. LLM 生成回答
+        5. 源文档信息提取
+        6. 结果格式化返回
+        """
         try:
+            # 输入验证
             if not question.strip():
                 return {
                     "success": False,
@@ -406,14 +683,14 @@ class RAGService:
             
             logger.info(f"查询问题: {question}")
             
-            # 检查是否为离线模式
+            # 模式路由：根据运行模式选择处理方式
             if self.offline_mode:
                 return self._offline_query(question)
             
-            # 在线模式：使用LlamaIndex查询
+            # 在线模式：使用 LlamaIndex 完整功能
             response = self.query_engine.query(question)
             
-            # 提取源文档信息
+            # 提取源文档信息用于答案追踪
             source_nodes = response.source_nodes if hasattr(response, 'source_nodes') else []
             sources = []
             for node in source_nodes:
@@ -425,6 +702,7 @@ class RAGService:
                     }
                     sources.append(source_info)
             
+            # 构建成功响应
             result = {
                 "success": True,
                 "answer": str(response),
@@ -444,7 +722,32 @@ class RAGService:
             }
     
     def _offline_query(self, question: str) -> dict:
-        """离线查询方法"""
+        """
+        离线模式查询处理模块
+        ==================
+        
+        功能说明：
+        --------
+        - 使用 TF-IDF 进行文档检索
+        - 结合 Ollama 生成智能回答
+        - 提供向量维度兼容性检查
+        
+        离线查询特点：
+        -----------
+        - 无需网络连接
+        - 使用本地向量化方案
+        - 智能回退机制
+        - 维度匹配验证
+        
+        处理流程：
+        --------
+        1. 连接本地 ChromaDB
+        2. 查询向量化
+        3. 向量检索
+        4. 上下文组合
+        5. LLM 生成回答
+        6. 结果格式化
+        """
         try:
             logger.info("使用离线模式进行查询")
             
@@ -569,7 +872,31 @@ class RAGService:
             }
     
     def _offline_add_documents(self, file_paths: Optional[List[str]] = None) -> bool:
-        """离线模式下添加文档"""
+        """
+        离线模式文档添加模块
+        ==================
+        
+        功能说明：
+        --------
+        - 无网络环境下的文档处理
+        - 使用简单文本提取方案
+        - TF-IDF 向量化和存储
+        
+        处理流程：
+        --------
+        1. 扫描文档文件列表
+        2. 简单文本提取
+        3. 文本分块处理
+        4. TF-IDF 向量化
+        5. 存储到 ChromaDB
+        
+        支持格式：
+        --------
+        - .txt 文本文件
+        - .md Markdown 文件
+        - .pdf PDF 文件（需 pypdf）
+        - .docx Word 文档（计划支持）
+        """
         try:
             logger.info("离线模式：添加文档")
             
@@ -650,7 +977,30 @@ class RAGService:
             return False
     
     def _extract_text_simple(self, file_path: str) -> str:
-        """简单的文本提取"""
+        """
+        简单文本提取模块
+        ==============
+        
+        功能说明：
+        --------
+        - 从各种文件格式中提取纯文本
+        - 离线模式专用，无需复杂依赖
+        
+        支持格式：
+        --------
+        - .txt/.md: 直接读取文本内容
+        - .pdf: 使用 pypdf 提取（可选）
+        - 其他格式: 提示不支持
+        
+        参数说明：
+        --------
+        file_path: str
+            待提取的文件路径
+            
+        返回值：
+        ------
+        str: 提取的文本内容，失败时返回空字符串
+        """
         try:
             file_path = Path(file_path)
             
@@ -679,7 +1029,35 @@ class RAGService:
             return ""
     
     def _split_text_simple(self, text: str, chunk_size: int = 1024, overlap: int = 20) -> List[str]:
-        """简单的文本分块"""
+        """
+        简单文本分块模块
+        ==============
+        
+        功能说明：
+        --------
+        - 将长文本分割成适合向量化的块
+        - 智能边界检测，避免截断句子
+        - 支持重叠分块，保持上下文连续性
+        
+        分块策略：
+        --------
+        - 优先在句号、换行符处分割
+        - 保持指定的重叠区域
+        - 过滤空白和过短的块
+        
+        参数说明：
+        --------
+        text: str
+            待分块的原始文本
+        chunk_size: int
+            每个块的最大字符数
+        overlap: int
+            块间重叠的字符数
+            
+        返回值：
+        ------
+        List[str]: 分块后的文本列表
+        """
         if len(text) <= chunk_size:
             return [text]
         
@@ -708,7 +1086,19 @@ class RAGService:
         return chunks
     
     def get_document_count(self) -> int:
-        """获取文档数量"""
+        """
+        文档数量统计模块
+        ==============
+        
+        功能说明：
+        --------
+        - 获取向量数据库中的文档数量
+        - 用于系统状态监控
+        
+        返回值：
+        ------
+        int: 数据库中存储的文档数量
+        """
         try:
             # 通过向量存储获取文档数量
             collection = self.vector_store._collection
@@ -718,7 +1108,33 @@ class RAGService:
             return 0
     
     def clear_index(self) -> bool:
-        """清空索引"""
+        """
+        索引清理模块
+        ==========
+        
+        功能说明：
+        --------
+        - 完全清空向量数据库
+        - 重新初始化索引系统
+        - 重置所有缓存状态
+        
+        使用场景：
+        --------
+        - 重新构建知识库
+        - 清理损坏的索引
+        - 重置系统状态
+        
+        操作流程：
+        --------
+        1. 删除现有 ChromaDB 集合
+        2. 重新创建空集合
+        3. 重新初始化索引
+        4. 重置离线模型状态
+        
+        返回值：
+        ------
+        bool: 清理成功返回 True，失败返回 False
+        """
         try:
             logger.info("开始清空索引...")
             
@@ -793,13 +1209,39 @@ class RAGService:
             return False
     
     def health_check(self) -> dict:
-        """健康检查"""
+        """
+        系统健康检查模块
+        ==============
+        
+        功能说明：
+        --------
+        - 检查各组件运行状态
+        - 验证服务连接性
+        - 提供系统诊断信息
+        
+        检查项目：
+        --------
+        - Ollama LLM 服务状态
+        - 向量数据库连接
+        - 文档数量统计
+        - 嵌入模型状态
+        
+        返回值：
+        ------
+        dict: 健康检查结果字典
+            - success: bool, 整体状态
+            - ollama_status: str, LLM 服务状态
+            - model_name: str, 当前使用的模型
+            - document_count: int, 文档数量
+            - embedding_model: str, 嵌入模型名称
+            - error: str, 错误信息（如果失败）
+        """
         try:
-            # 检查Ollama连接
+            # LLM 服务连接测试
             test_response = self.llm.complete("Hello")
             ollama_status = "正常" if test_response else "异常"
             
-            # 检查向量存储
+            # 向量数据库状态检查
             doc_count = self.get_document_count()
             
             return {
@@ -815,17 +1257,53 @@ class RAGService:
                 "error": str(e)
             }
 
-# 全局RAG服务实例
+
+# ================================================================================
+# 全局服务管理模块
+# ================================================================================
+
+# 全局 RAG 服务实例（单例模式）
 rag_service = None
 
 def get_rag_service() -> RAGService:
-    """获取RAG服务实例"""
+    """
+    RAG 服务实例获取函数
+    ===================
+    
+    功能说明：
+    --------
+    - 实现单例模式的服务管理
+    - 自动加载环境变量配置
+    - 提供全局访问入口
+    
+    配置来源：
+    --------
+    - 环境变量优先
+    - 默认值兜底
+    - 支持 .env 文件
+    
+    环境变量列表：
+    -----------
+    - OLLAMA_BASE_URL: Ollama 服务地址
+    - DEFAULT_MODEL: 默认 LLM 模型名称
+    - EMBEDDING_MODEL: 嵌入模型名称
+    - DOCUMENTS_PATH: 文档存储路径
+    - VECTOR_STORE_PATH: 向量数据库路径
+    - CHUNK_SIZE: 文档分块大小
+    - CHUNK_OVERLAP: 分块重叠大小
+    - TOP_K: 检索返回数量
+    
+    返回值：
+    ------
+    RAGService: 配置完成的 RAG 服务实例
+    """
     global rag_service
     if rag_service is None:
-        # 从环境变量加载配置
+        # 加载环境变量配置（支持 .env 文件）
         from dotenv import load_dotenv
         load_dotenv()
         
+        # 使用环境变量或默认值创建服务实例
         rag_service = RAGService(
             ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
             model_name=os.getenv("DEFAULT_MODEL", "maoniang:latest"),
