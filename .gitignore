@@ -42,3 +42,4 @@ rag_service/rag_env/
 rag_service/__pycache__/
 rag_service/*.pyc
 rag_service/.env.local
+rag_service/documents
